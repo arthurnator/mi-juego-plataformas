@@ -3,93 +3,186 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mi Juego de Plataformas</title>
+    <title>Retro Racing - Estilo Top Gear</title>
     <style>
         body {
             margin: 0;
             padding: 0;
-            background-color: #111;
+            background-color: #000;
             display: flex;
             justify-content: center;
             align-items: center;
             height: 100vh;
-            color: white;
-            font-family: Arial, sans-serif;
+            font-family: 'Courier New', Courier, monospace;
+            color: #fff;
         }
         canvas {
             border: 4px solid #fff;
-            background-color: #5c94fc; /* Azul cielo estilo Mario */
+            box-shadow: 0 0 20px rgba(255, 255, 255, 0.2);
         }
     </style>
 </head>
 <body>
 
-    <canvas id="gameCanvas" width="800" height="400"></canvas>
+    <canvas id="gameCanvas" width="640" height="480"></canvas>
 
     <script>
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
 
-        // Configuración del Personaje (Estilo Mario)
-        const player = {
-            x: 50,
-            y: 300,
-            width: 30,
-            height: 40,
-            speed: 5,
-            velY: 0,
-            jumping: false,
-            color: '#ff0000' // Rojo Mario
-        };
+        // Configuración de la pantalla
+        const width = canvas.width;
+        const height = canvas.height;
+        const roadY = height / 2; // El horizonte empieza a la mitad de la pantalla
 
-        const gravity = 0.5;
+        // Variables del Jugador y la Física
+        let position = 0;      // Distancia recorrida en el mapa
+        let playerX = 0;       // Posición horizontal en la carretera (-1 izquierda, 1 derecha)
+        let speed = 0;         // Velocidad actual
+        const maxSpeed = 200;  // Velocidad máxima
+        const accel = 2;       // Aceleración
+        const decel = 1.5;     // Frenado natural
+        const breaking = 5;    // Freno activo
+        const turnSpeed = 0.04;
+
+        // Estructura de la Pista (Segmentos)
+        // Cada segmento define la curvatura de una sección de la carretera
+        const segments = [];
+        const segmentLength = 200; // Cuán largo es cada trozo de pista
+
+        function generateTrack() {
+            // Generar una pista cíclica con curvas aleatorias
+            for (let i = 0; i < 500; i++) {
+                let curve = 0;
+                if (i > 50 && i < 100) curve = 0.5;    // Curva suave a la derecha
+                if (i > 150 && i < 220) curve = -0.8;  // Curva cerrada a la izquierda
+                if (i > 300 && i < 380) curve = 1.2;   // Curva muy cerrada a la derecha
+
+                segments.push({
+                    index: i,
+                    curve: curve,
+                    color: Math.floor(i / 3) % 2 === 0 ? { road: '#424242', grass: '#10aa10', rumble: '#fff' } 
+                                                       : { road: '#3c3c3c', grass: '#008800', rumble: '#ff0000' }
+                });
+            }
+        }
+        generateTrack();
+        const trackLength = segments.length * segmentLength;
+
+        // Controles de teclado
         const keys = {};
-
-        // Suelo estático
-        const ground = { x: 0, y: 360, width: 800, height: 40 };
-
-        // Escuchar teclado
         window.addEventListener('keydown', e => keys[e.code] = true);
         window.addEventListener('keyup', e => keys[e.code] = false);
 
         function update() {
-            // Movimiento lateral
-            if (keys['ArrowRight'] || keys['KeyD']) {
-                if (player.x < canvas.width - player.width) player.x += player.speed;
-            }
-            if (keys['ArrowLeft'] || keys['KeyA']) {
-                if (player.x > 0) player.x -= player.speed;
-            }
-            
-            // Salto (Flecha arriba o Espacio)
-            if ((keys['ArrowUp'] || keys['Space']) && !player.jumping) {
-                player.velY = -10;
-                player.jumping = true;
+            // Acelerar / Frenar
+            if (keys['ArrowUp'] || keys['KeyW']) {
+                speed = Math.min(speed + accel, maxSpeed);
+            } else if (keys['ArrowDown'] || keys['KeyS']) {
+                speed = Math.max(speed - breaking, 0);
+            } else {
+                speed = Math.max(speed - decel, 0);
             }
 
-            // Aplicar gravedad
-            player.velY += gravity;
-            player.y += player.velY;
+            // Moverse en el mundo según la velocidad
+            position += speed;
+            if (position >= trackLength) position -= trackLength;
 
-            // Colisión básica con el suelo
-            if (player.y >= ground.y - player.height) {
-                player.y = ground.y - player.height;
-                player.velY = 0;
-                player.jumping = false;
+            // Obtener el segmento actual en el que está el auto
+            let currentSegmentIndex = Math.floor(position / segmentLength);
+            let currentSegment = segments[currentSegmentIndex];
+
+            // Girar el auto e influencia de la fuerza centrífuga en las curvas
+            if (speed > 0) {
+                if (keys['ArrowLeft'] || keys['KeyA']) playerX -= turnSpeed * (speed / maxSpeed);
+                if (keys['ArrowRight'] || keys['KeyD']) playerX += turnSpeed * (speed / maxSpeed);
+
+                // La curva empuja el auto hacia afuera
+                playerX -= (speed / maxSpeed) * currentSegment.curve * 0.015;
+            }
+
+            // Límites de la pista (Si se sale, frena drásticamente)
+            if (playerX < -1.5 || playerX > 1.5) {
+                if (speed > 50) speed -= 4;
             }
         }
 
         function draw() {
-            // Limpiar pantalla
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            // 1. Dibujar el Cielo y el Horizonte
+            ctx.fillStyle = '#0055ff'; // Azul cielo
+            ctx.fillRect(0, 0, width, roadY);
+            
+            // Montañas lejanas simuladas
+            ctx.fillStyle = '#775533';
+            ctx.fillRect(0, roadY - 30, width, 30);
 
-            // Dibujar Suelo (Marrón/Verde)
-            ctx.fillStyle = '#8bc34a';
-            ctx.fillRect(ground.x, ground.y, ground.width, ground.height);
+            // 2. Dibujar la Carretera (Efecto de Perspectiva Pseudo-3D)
+            let startSegmentIndex = Math.floor(position / segmentLength);
+            let dx = 0; // Acumulador de curvas
+            let ddx = 0;
 
-            // Dibujar Jugador
-            ctx.fillStyle = player.color;
-            ctx.fillRect(player.x, player.y, player.width, player.height);
+            // Dibujamos desde el horizonte (lejos) hacia abajo (cerca)
+            for (let i = 80; i > 0; i--) {
+                let segIndex = (startSegmentIndex + i) % segments.length;
+                let seg = segments[segIndex];
+
+                // Fórmulas de perspectiva hiperbólica simple
+                let perspective = i / 80;
+                let nextPerspective = (i - 1) / 80;
+
+                let y1 = roadY + (1 - perspective) * roadY;
+                let h1 = roadY + (1 - nextPerspective) * roadY - y1;
+
+                // Aplicar curvatura acumulada
+                ddx += seg.curve;
+                dx += ddx;
+
+                let w1 = width * 0.6 * perspective; // Ancho de carretera lejano
+                let w2 = width * 0.6 * nextPerspective; // Ancho cercano
+
+                // Centros de la pista proyectados en pantalla
+                let cx1 = width / 2 + (dx * 0.3) * (1 - perspective);
+                let cx2 = width / 2 + ((dx + ddx) * 0.3) * (1 - nextPerspective);
+
+                // Dibujar Pasto de los lados
+                ctx.fillStyle = seg.color.grass;
+                ctx.fillRect(0, y1, width, h1 + 1);
+
+                // Dibujar Bordes (Rumble strips rojo/blanco)
+                ctx.fillStyle = seg.color.rumble;
+                ctx.fillRect(cx1 - w1 * 1.1, y1, w1 * 2.2, h1 + 1);
+
+                // Dibujar la Pista (Asfalto gris)
+                ctx.fillStyle = seg.color.road;
+                ctx.fillRect(cx1 - w1, y1, w1 * 2, h1 + 1);
+            }
+
+            // 3. Dibujar el Auto del Jugador (Abajo en el centro/subjetivo)
+            let carScreenX = width / 2 + (playerX * width * 0.3) - 40;
+            let carScreenY = height - 100;
+
+            // Chasis del Auto (Estilo Deportivo Rojo)
+            ctx.fillStyle = '#ff0000'; // Cuerpo principal
+            ctx.fillRect(carScreenX, carScreenY, 80, 40);
+            
+            ctx.fillStyle = '#000000'; // Alerón y ruedas
+            ctx.fillRect(carScreenX - 5, carScreenY + 10, 5, 25); // Rueda izq
+            ctx.fillRect(carScreenX + 80, carScreenY + 10, 5, 25); // Rueda der
+            ctx.fillRect(carScreenX - 5, carScreenY, 90, 8); // Alerón trasero
+
+            ctx.fillStyle = '#55ffff'; // Parabrisas trasero
+            ctx.fillRect(carScreenX + 15, carScreenY + 15, 50, 10);
+
+            // Luces traseras de freno (se encienden al frenar)
+            ctx.fillStyle = (keys['ArrowDown'] || keys['KeyS']) ? '#ff5555' : '#aa0000';
+            ctx.fillRect(carScreenX + 5, carScreenY + 28, 15, 6);
+            ctx.fillRect(carScreenX + 60, carScreenY + 28, 15, 6);
+
+            // 4. Interfaz de Usuario (HUD)
+            ctx.fillStyle = '#fff';
+            ctx.font = '20px "Courier New"';
+            ctx.fillText(`VELOCIDAD: ${Math.floor(speed)} KM/H`, 20, 40);
+            ctx.fillText(`DISTANCIA: ${Math.floor(position / 10)} M`, 20, 70);
         }
 
         function gameLoop() {
@@ -98,7 +191,6 @@
             requestAnimationFrame(gameLoop);
         }
 
-        // Iniciar juego
         gameLoop();
     </script>
 </body>
