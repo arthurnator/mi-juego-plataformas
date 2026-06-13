@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mi Juego de Plataformas</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #111;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            color: white;
+            font-family: Arial, sans-serif;
+        }
+        canvas {
+            border: 4px solid #fff;
+            background-color: #5c94fc; /* Azul cielo estilo Mario */
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="gameCanvas" width="800" height="400"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Configuración del Personaje (Estilo Mario)
+        const player = {
+            x: 50,
+            y: 300,
+            width: 30,
+            height: 40,
+            speed: 5,
+            velY: 0,
+            jumping: false,
+            color: '#ff0000' // Rojo Mario
+        };
+
+        const gravity = 0.5;
+        const keys = {};
+
+        // Suelo estático
+        const ground = { x: 0, y: 360, width: 800, height: 40 };
+
+        // Escuchar teclado
+        window.addEventListener('keydown', e => keys[e.code] = true);
+        window.addEventListener('keyup', e => keys[e.code] = false);
+
+        function update() {
+            // Movimiento lateral
+            if (keys['ArrowRight'] || keys['KeyD']) {
+                if (player.x < canvas.width - player.width) player.x += player.speed;
+            }
+            if (keys['ArrowLeft'] || keys['KeyA']) {
+                if (player.x > 0) player.x -= player.speed;
+            }
+            
+            // Salto (Flecha arriba o Espacio)
+            if ((keys['ArrowUp'] || keys['Space']) && !player.jumping) {
+                player.velY = -10;
+                player.jumping = true;
+            }
+
+            // Aplicar gravedad
+            player.velY += gravity;
+            player.y += player.velY;
+
+            // Colisión básica con el suelo
+            if (player.y >= ground.y - player.height) {
+                player.y = ground.y - player.height;
+                player.velY = 0;
+                player.jumping = false;
+            }
+        }
+
+        function draw() {
+            // Limpiar pantalla
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Dibujar Suelo (Marrón/Verde)
+            ctx.fillStyle = '#8bc34a';
+            ctx.fillRect(ground.x, ground.y, ground.width, ground.height);
+
+            // Dibujar Jugador
+            ctx.fillStyle = player.color;
+            ctx.fillRect(player.x, player.y, player.width, player.height);
+        }
+
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Iniciar juego
+        gameLoop();
+    </script>
+</body>
+</html>
