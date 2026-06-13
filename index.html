@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Super Mario - Enemigos y PowerUps</title>
+    <title>Super Mario - Corregido</title>
     <style>
         body {
             margin: 0;
             padding: 0;
-            background-color: #000;
+            background-color: #0d0d0d;
             display: flex;
             justify-content: center;
             align-items: center;
@@ -37,7 +37,7 @@
         // Estado del Jugador
         const player = {
             x: 100,
-            y: 300,
+            y: 200,
             width: 32,
             height: 48,
             velX: 0,
@@ -46,92 +46,75 @@
             jumpForce: 12,
             grounded: false,
             coins: 0,
-            powerUp: false // false = Normal, true = Súper Mario (Blanco/Rojo)
+            powerUp: false
         };
 
         const camera = { x: 0, width: canvas.width };
 
-        // Arrays del juego
+        // Arrays globales de entidades
         let platforms = [];
         let coins = [];
         let enemies = [];
         let powerUps = [];
 
-        // --- GENERACIÓN DEL MAPA EXTENDIDO ---
+        // --- GENERACIÓN DEL MAPA ---
         function initLevel() {
             platforms = [];
             coins = [];
             enemies = [];
             powerUps = [];
+            
             player.x = 100;
-            player.y = 300;
+            player.y = 200;
             player.velX = 0;
             player.velY = 0;
+            player.powerUp = false;
 
-            // 1. Suelo base con múltiples abismos/vacíos estratégicos
+            // 1. Suelo base con abismos
             for (let i = 0; i < 120; i++) {
-                // Huecos en las posiciones de bloques: 18-20, 45-47, y 80-83
-                if ((i < 18 || i > 20) && (i < 45 || i > 47) && (i < 80 || i > 83)) {
+                if ((i < 15 || i > 17) && (i < 45 || i > 48) && (i < 80 || i > 83)) {
                     platforms.push({ x: i * 32, y: canvas.height - 64, width: 32, height: 64, type: 'ground' });
                 }
             }
 
-            // 2. Obstáculo: Tuberías Clásicas (Verdes, diferentes alturas)
-            const pipes = [
-                { x: 400, height: 64 },
-                { x: 850, height: 96 },
-                { x: 1800, height: 128 },
-                { x: 2300, height: 80 }
-            ];
-            pipes.forEach(p => {
-                platforms.push({ x: p.x, y: canvas.height - 64 - p.height, width: 64, height: p.height, type: 'pipe' });
-            });
+            // 2. Tuberías Verdes
+            platforms.push({ x: 450, y: canvas.height - 64 - 64, width: 64, height: 64, type: 'pipe' });
+            platforms.push({ x: 900, y: canvas.height - 64 - 96, width: 64, height: 96, type: 'pipe' });
+            platforms.push({ x: 1600, y: canvas.height - 64 - 128, width: 64, height: 128, type: 'pipe' });
 
             // 3. Bloques Flotantes y Cajas Sorpresa
             const blocks = [
-                // Zona inicial
-                { x: 250, y: 260, type: 'brick' },
-                { x: 282, y: 260, type: 'box', item: 'mushroom' }, // Contiene el Hongo
-                { x: 314, y: 260, type: 'brick' },
+                { x: 280, y: 260, type: 'brick' },
+                { x: 312, y: 260, type: 'box', item: 'mushroom' }, // CAJA DEL HONGO
+                { x: 344, y: 260, type: 'brick' },
                 
-                // Bloques sobre el primer gran abismo
                 { x: 700, y: 240, type: 'brick' },
                 { x: 732, y: 240, type: 'box', item: 'coin' },
                 { x: 764, y: 240, type: 'brick' },
 
-                // Pirámide de desafíos a mitad de nivel
                 { x: 1200, y: 320, type: 'brick' },
-                { x: 1232, y: 320, type: 'brick' }, { x: 1232, y: 288, type: 'brick' },
-                { x: 1264, y: 320, type: 'brick' }, { x: 1264, y: 288, type: 'brick' }, { x: 1264, y: 256, type: 'box', item: 'coin' },
-                
-                // Zona aérea de alta dificultad
-                { x: 2600, y: 220, type: 'box', item: 'coin' },
-                { x: 2660, y: 180, type: 'brick' },
-                { x: 2720, y: 140, type: 'box', item: 'mushroom' },
-                { x: 2780, y: 180, type: 'brick' }
+                { x: 1232, y: 288, type: 'box', item: 'coin' },
+                { x: 1264, y: 320, type: 'brick' }
             ];
             blocks.forEach(b => {
                 platforms.push({ x: b.x, y: b.y, width: 32, height: 32, type: b.type, item: b.item, hit: false });
             });
 
-            // 4. Monedas flotantes distribuidas
+            // 4. Monedas flotantes
             const coinPositions = [
-                { x: 258, y: 220 }, { x: 322, y: 220 },
-                { x: 500, y: 300 }, { x: 540, y: 300 },
-                { x: 716, y: 190 }, { x: 1248, y: 240 },
-                { x: 2000, y: 280 }, { x: 2050, y: 240 }, { x: 2100, y: 280 }
+                { x: 288, y: 210 }, { x: 352, y: 210 },
+                { x: 600, y: 320 }, { x: 650, y: 320 },
+                { x: 1050, y: 250 }, { x: 1100, y: 250 }
             ];
             coinPositions.forEach(c => coins.push({ x: c.x, y: c.y, width: 16, height: 20, collected: false }));
 
-            // 5. Enemigos (Goombas) que patrullan
-            enemies.push({ x: 550, y: 300, width: 32, height: 32, velX: -1.5, type: 'goomba' });
-            enemies.push({ x: 1000, y: 300, width: 32, height: 32, velX: -2, type: 'goomba' });
+            // 5. Enemigos (Goombas) obligatorios en pantalla
+            enemies.push({ x: 580, y: 300, width: 32, height: 32, velX: -1.5, type: 'goomba' });
+            enemies.push({ x: 1050, y: 300, width: 32, height: 32, velX: -2.0, type: 'goomba' });
             enemies.push({ x: 1400, y: 300, width: 32, height: 32, velX: -1.5, type: 'goomba' });
-            enemies.push({ x: 1550, y: 300, width: 32, height: 32, velX: 1.5, type: 'goomba' });
-            enemies.push({ x: 2100, y: 300, width: 32, height: 32, velX: -2, type: 'goomba' });
         }
 
-        // Sistema de detección AABB de impactos laterales/verticales
+        // Sistema de colisiones por los 4 lados (AABB)
         function colCheck(shapeA, shapeB) {
             let vX = (shapeA.x + (shapeA.width / 2)) - (shapeB.x + (shapeB.width / 2)),
                 vY = (shapeA.y + (shapeA.height / 2)) - (shapeB.y + (shapeB.height / 2)),
@@ -153,8 +136,12 @@
             return colDir;
         }
 
+        const keys = [];
+        window.addEventListener('keydown', e => keys[e.code] = true);
+        window.addEventListener('keyup', e => keys[e.code] = false);
+
         function update() {
-            // Controles del Teclado
+            // Controles básicos
             if (keys['ArrowRight'] || keys['KeyD']) { if (player.velX < player.speed) player.velX++; }
             if (keys['ArrowLeft'] || keys['KeyA']) { if (player.velX > -player.speed) player.velX--; }
             if (keys['ArrowUp'] || keys['Space'] || keys['KeyW']) {
@@ -165,7 +152,7 @@
             player.velY += gravity;
             player.grounded = false;
 
-            // Colisiones con Plataformas Rígidas
+            // Colisiones estructurales
             platforms.forEach(platform => {
                 let dir = colCheck(player, platform);
                 if (dir === "l" || dir === "r") {
@@ -174,13 +161,12 @@
                     player.grounded = true;
                     player.velY = 0;
                 } else if (dir === "t") {
-                    player.velY = 2; // Rebote hacia abajo
-                    
-                    // Si golpea un bloque sorpresa por abajo, libera el item
+                    player.velY = 2;
+                    // Activar bloque sorpresa al golpearlo por abajo
                     if (platform.type === 'box' && !platform.hit) {
                         platform.hit = true;
                         if (platform.item === 'mushroom') {
-                            powerUps.push({ x: platform.x, y: platform.y - 32, width: 32, height: 32, velX: 2, type: 'mushroom', grounded: false });
+                            powerUps.push({ x: platform.x, y: platform.y - 32, width: 32, height: 32, velX: 1.5, velY: 0, type: 'mushroom' });
                         } else if (platform.item === 'coin') {
                             player.coins++;
                         }
@@ -188,61 +174,58 @@
                 }
             });
 
-            // Actualizar Power-Ups (Champiñones en movimiento)
+            // Actualizar Hongo (Power-Up)
             powerUps.forEach(p => {
                 p.velY += gravity;
                 p.x += p.velX;
                 p.y += p.velY;
 
-                // Colisión del hongo con el suelo
                 platforms.forEach(plat => {
                     let d = colCheck(p, plat);
-                    if (d === "b") { p.velY = 0; p.grounded = true; }
-                    if (d === "l" || d === "r") { p.velX *= -1; } // Rebota si choca pared/tubo
+                    if (d === "b") p.velY = 0;
+                    if (d === "l" || d === "r") p.velX *= -1;
                 });
 
-                // Recoger PowerUp
+                // Mario toca el Hongo
                 if (player.x < p.x + p.width && player.x + player.width > p.x &&
                     player.y < p.y + p.height && player.y + player.height > p.y) {
-                        player.powerUp = true; // Convierte en Mario Fuego / Fuerte
-                        p.y = -9999; // Desaparecer hongo
+                        player.powerUp = true; // Activa modo Super Mario
+                        p.y = -9999; // Lo saca del mapa
                 }
             });
 
-            // Actualizar Enemigos (Goombas)
+            // Actualizar Goombas (Enemigos)
             enemies.forEach((enemy, index) => {
                 enemy.velY += gravity;
                 enemy.x += enemy.velX;
                 enemy.y += enemy.velY;
 
-                // Colisión de enemigos con plataformas y tuberías
                 platforms.forEach(plat => {
                     let d = colCheck(enemy, plat);
                     if (d === "b") enemy.velY = 0;
-                    if (d === "l" || d === "r") enemy.velX *= -1; // Cambian de dirección al chocar
+                    if (d === "l" || d === "r") enemy.velX *= -1; // Rebotar contra tubos/muros
                 });
 
-                // Colisión entre Mario y el Enemigo
+                // Interacción Mario vs Goomba
                 if (player.x < enemy.x + enemy.width && player.x + player.width > enemy.x &&
                     player.y < enemy.y + enemy.height && player.y + player.height > enemy.y) {
                     
-                    // ¿Lo pisó desde arriba?
-                    if (player.velY > 0 && player.y + player.height - player.velY <= enemy.y + 12) {
-                        player.velY = -8; // Rebote elástico de Mario
-                        enemies.splice(index, 1); // Eliminar enemigo
+                    if (player.velY > 0 && player.y + player.height - player.velY <= enemy.y + 14) {
+                        player.velY = -8; // Rebote elástico
+                        enemies.splice(index, 1); // Goomba eliminado
                     } else {
-                        // El enemigo golpea a Mario lateralmente
                         if (player.powerUp) {
-                            player.powerUp = false; // Pierde el traje especial, pero sobrevive
-                            enemy.x += (player.x < enemy.x) ? 80 : -80; // Separación de seguridad temporal
+                            player.powerUp = false; // Pierde powerup pero vive
+                            enemy.velX *= -1;
+                            player.x += (player.x < enemy.x) ? -40 : 40;
                         } else {
-                            initLevel(); // Muere y reinicia nivel entero
+                            initLevel(); // Muere y reinicia todo el mapa
                         }
                     }
                 }
             });
 
-            // Recolectar Monedas flotantes
+            // Monedas
             coins.forEach(coin => {
                 if (!coin.collected && player.x < coin.x + coin.width && player.x + player.width > coin.x &&
                     player.y < coin.y + coin.height && player.y + player.height > coin.y) {
@@ -251,16 +234,15 @@
                 }
             });
 
-            // Movimiento del jugador final
             player.x += player.velX;
             player.y += player.velY;
             if (player.x < 0) player.x = 0;
 
-            // Scroll de la cámara acoplado
+            // Movimiento de cámara
             if (player.x > canvas.width / 2) { camera.x = player.x - canvas.width / 2; } 
             else { camera.x = 0; }
 
-            // Caída al vacío (Muerte)
+            // Caída al abismo
             if (player.y > canvas.height) { initLevel(); }
         }
 
@@ -269,82 +251,61 @@
             ctx.save();
             ctx.translate(-camera.x, 0);
 
-            // 1. Dibujar Bloques del Mapa
+            // Dibujar Plataformas
             platforms.forEach(p => {
                 if (p.type === 'ground') {
                     ctx.fillStyle = '#d88444'; ctx.fillRect(p.x, p.y, p.width, p.height);
                     ctx.fillStyle = '#4cb050'; ctx.fillRect(p.x, p.y, p.width, 10);
                 } else if (p.type === 'pipe') {
-                    // Tubería verde detallada
                     ctx.fillStyle = '#00a800'; ctx.fillRect(p.x, p.y, p.width, p.height);
-                    ctx.fillStyle = '#007000'; ctx.fillRect(p.x, p.y, 6, p.height); // Sombra lateral
-                    ctx.fillStyle = '#00f800'; ctx.fillRect(p.x + 10, p.y, 8, p.height); // Brillo
                     ctx.fillStyle = '#005800'; ctx.strokeRect(p.x, p.y, p.width, p.height);
                 } else if (p.type === 'brick') {
                     ctx.fillStyle = '#b84418'; ctx.fillRect(p.x, p.y, p.width, p.height);
                     ctx.strokeStyle = '#fca044'; ctx.strokeRect(p.x, p.y, p.width, p.height);
                 } else if (p.type === 'box') {
-                    // Caja sorpresa activa o vacía de color marrón si ya fue golpeada
-                    ctx.fillStyle = p.hit ? '#8a5230' : '#fc9c5c';
-                    ctx.fillRect(p.x, p.y, p.width, p.height);
-                    ctx.fillStyle = '#fff'; ctx.font = 'bold 16px Arial';
-                    ctx.fillText(p.hit ? '.' : '?', p.x + 12, p.y + 22);
+                    ctx.fillStyle = p.hit ? '#8a5230' : '#fc9c5c'; ctx.fillRect(p.x, p.y, p.width, p.height);
+                    ctx.fillStyle = '#fff'; ctx.font = 'bold 16px Arial'; ctx.fillText(p.hit ? '.' : '?', p.x + 12, p.y + 22);
                     ctx.strokeStyle = '#000'; ctx.strokeRect(p.x, p.y, p.width, p.height);
                 }
             });
 
-            // 2. Dibujar Monedas
+            // Dibujar Monedas
             coins.forEach(c => {
                 if (!c.collected) {
-                    ctx.fillStyle = '#fcc018'; ctx.beginPath();
-                    ctx.ellipse(c.x + 8, c.y + 10, 6, 10, 0, 0, Math.PI * 2); ctx.fill();
+                    ctx.fillStyle = '#fcc018'; ctx.beginPath(); ctx.ellipse(c.x + 8, c.y + 10, 6, 10, 0, 0, Math.PI * 2); ctx.fill();
                 }
             });
 
-            // 3. Dibujar Champiñones (Power-Up Activos)
+            // Dibujar Champiñón (Aparece solo si golpeas el bloque "?" central)
             powerUps.forEach(p => {
-                ctx.fillStyle = '#ff3800'; // Sombrero hongo rojo
-                ctx.beginPath(); ctx.arc(p.x + 16, p.y + 14, 14, Math.PI, 0, false); ctx.fill();
-                ctx.fillStyle = '#f8b888'; // Cuerpo hongo
-                ctx.fillRect(p.x + 8, p.y + 14, 16, 18);
-                ctx.fillStyle = '#fff'; // Puntos blancos del sombrero
-                ctx.fillRect(p.x + 12, p.y + 4, 8, 6);
+                ctx.fillStyle = '#ff3800'; ctx.beginPath(); ctx.arc(p.x + 16, p.y + 14, 14, Math.PI, 0, false); ctx.fill();
+                ctx.fillStyle = '#f8b888'; ctx.fillRect(p.x + 8, p.y + 14, 16, 18);
             });
 
-            // 4. Dibujar Enemigos (Goombas)
+            // Dibujar Goombas
             enemies.forEach(e => {
-                ctx.fillStyle = '#a84400'; // Cuerpo marrón
-                ctx.beginPath(); ctx.arc(e.x + 16, e.y + 16, 16, Math.PI, 0, false); ctx.fill();
+                ctx.fillStyle = '#a84400'; ctx.beginPath(); ctx.arc(e.x + 16, e.y + 16, 16, Math.PI, 0, false); ctx.fill();
                 ctx.fillRect(e.x + 4, e.y + 14, 24, 18);
-                ctx.fillStyle = '#000'; // Pies negros del Goomba
-                ctx.fillRect(e.x, e.y + 26, 12, 6); ctx.fillRect(e.x + 20, e.y + 26, 12, 6);
-                ctx.fillStyle = '#fff'; // Ojos molestos
-                ctx.fillRect(e.x + 8, e.y + 10, 4, 6); ctx.fillRect(e.x + 20, e.y + 10, 4, 6);
+                ctx.fillStyle = '#000'; ctx.fillRect(e.x + 2, e.y + 26, 10, 6); ctx.fillRect(e.x + 20, e.y + 26, 10, 6);
             });
 
-            // 5. Dibujar a Mario (Cambia de color con el Power-Up)
-            let suitColor = player.powerUp ? '#ffffff' : '#0020f8'; // Overol Azul o Blanco
-            let mainColor = '#f83800'; // Siempre Rojo
-
-            ctx.fillStyle = suitColor; ctx.fillRect(player.x + 4, player.y + 24, player.width - 8, 24);
-            ctx.fillStyle = mainColor; ctx.fillRect(player.x + 2, player.y + 8, player.width - 4, 16);
+            // Dibujar Mario (Cambia visualmente si consigues el Hongo)
+            let overolColor = player.powerUp ? '#ffffff' : '#0020f8'; // Overol Blanco si tiene PowerUp
+            ctx.fillStyle = overolColor; ctx.fillRect(player.x + 4, player.y + 24, player.width - 8, 24);
+            ctx.fillStyle = '#f83800'; ctx.fillRect(player.x + 2, player.y + 8, player.width - 4, 16); // Camisa
             ctx.fillStyle = '#f8b888'; ctx.fillRect(player.x + 6, player.y, player.width - 12, 12); // Piel
-            ctx.fillStyle = mainColor; ctx.fillRect(player.x + 4, player.y, player.width - 8, 4); // Gorra
+            ctx.fillStyle = '#f83800'; ctx.fillRect(player.x + 4, player.y, player.width - 8, 4); // Gorra
 
             ctx.restore();
 
-            // 6. HUD superior (Marcador)
-            ctx.fillStyle = '#fff'; ctx.font = 'bold 20px "Courier New"';
-            ctx.fillText(`MARIO   MONEDAS: ${player.coins.toString().padStart(2, '0')}   ESTADO: ${player.powerUp ? "SUPER" : "NORMAL"}`, 30, 40);
+            // Marcador HUD superior
+            ctx.fillStyle = '#fff'; ctx.font = 'bold 18px "Courier New"';
+            ctx.fillText(`MARIO   MONEDAS: ${player.coins.toString().padStart(2, '0')}   POWERUP: ${player.powerUp ? "SÚPER" : "NINGUNO"}`, 30, 40);
         }
-
-        const keys = [];
-        window.addEventListener('keydown', e => keys[e.code] = true);
-        window.addEventListener('keyup', e => keys[e.code] = false);
 
         function gameLoop() { update(); draw(); requestAnimationFrame(gameLoop); }
 
-        // Inicializar el nivel al cargar
+        // Inicialización Forzada e Inmediata
         initLevel();
         gameLoop();
     </script>
