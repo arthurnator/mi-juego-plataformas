@@ -3,13 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Retro Racing - Estilo Top Gear</title>
+    <title>Retro Racing v2 - Estilo Top Gear</title>
     <style>
         body {
             margin: 0;
             padding: 0;
-            background-color: #000;
+            background-color: #0d0d0d;
             display: flex;
+            flex-direction: column;
             justify-content: center;
             align-items: center;
             height: 100vh;
@@ -17,65 +18,121 @@
             color: #fff;
         }
         canvas {
-            border: 4px solid #fff;
-            box-shadow: 0 0 20px rgba(255, 255, 255, 0.2);
+            border: 6px solid #333;
+            box-shadow: 0 0 30px rgba(255, 0, 0, 0.3);
+            background-color: #000;
+        }
+        .instructions {
+            margin-top: 10px;
+            color: #888;
+            font-size: 14px;
+            text-align: center;
         }
     </style>
 </head>
 <body>
 
     <canvas id="gameCanvas" width="640" height="480"></canvas>
+    <div class="instructions">Usa las Flechas o WASD para conducir. ¡Haz clic en la pantalla para activar el sonido del motor!</div>
 
     <script>
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
 
-        // Configuración de la pantalla
         const width = canvas.width;
         const height = canvas.height;
-        const roadY = height / 2; // El horizonte empieza a la mitad de la pantalla
+        const roadY = 200; // Horizonte corregido
+        const viewDepth = 80;
 
-        // Variables del Jugador y la Física
-        let position = 0;      // Distancia recorrida en el mapa
-        let playerX = 0;       // Posición horizontal en la carretera (-1 izquierda, 1 derecha)
-        let speed = 0;         // Velocidad actual
-        const maxSpeed = 200;  // Velocidad máxima
-        const accel = 2;       // Aceleración
-        const decel = 1.5;     // Frenado natural
-        const breaking = 5;    // Freno activo
+        // Física y Jugador
+        let position = 0;
+        let playerX = 0;
+        let speed = 0;
+        const maxSpeed = 240;
+        const accel = 1.5;
+        const decel = 1.0;
+        const breaking = 6;
         const turnSpeed = 0.04;
 
-        // Estructura de la Pista (Segmentos)
-        // Cada segmento define la curvatura de una sección de la carretera
-        const segments = [];
-        const segmentLength = 200; // Cuán largo es cada trozo de pista
+        // Audio Context para efectos retro
+        let audioCtx = null;
+        let engineOsc = null;
+        let engineGain = null;
 
+        function initAudio() {
+            if (audioCtx) return;
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            
+            // Configurar oscilador para el motor
+            engineOsc = audioCtx.createOscillator();
+            engineGain = audioCtx.createGain();
+            
+            engineOsc.type = 'sawtooth'; 
+            engineOsc.frequency.setValueAtTime(30, audioCtx.currentTime);
+            engineGain.gain.setValueAtTime(0.0, audioCtx.currentTime); // Apagado al inicio
+            
+            engineOsc.connect(engineGain);
+            engineGain.connect(audioCtx.destination);
+            engineOsc.start();
+        }
+
+        function playCrashSound() {
+            if (!audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(120, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(40, audioCtx.currentTime + 0.3);
+            gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+            gain.gain.linearRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.3);
+        }
+
+        // Estructura de la Pista
+        const segments = [];
+        const segmentLength = 200;
+        
         function generateTrack() {
-            // Generar una pista cíclica con curvas aleatorias
-            for (let i = 0; i < 500; i++) {
+            for (let i = 0; i < 600; i++) {
                 let curve = 0;
-                if (i > 50 && i < 100) curve = 0.5;    // Curva suave a la derecha
-                if (i > 150 && i < 220) curve = -0.8;  // Curva cerrada a la izquierda
-                if (i > 300 && i < 380) curve = 1.2;   // Curva muy cerrada a la derecha
+                if (i > 60 && i < 110) curve = 1.5;    // Curva derecha
+                if (i > 180 && i < 240) curve = -1.8;  // Curva izquierda cerrada
+                if (i > 350 && i < 450) curve = 2.2;   // Curva S a la derecha
 
                 segments.push({
                     index: i,
                     curve: curve,
-                    color: Math.floor(i / 3) % 2 === 0 ? { road: '#424242', grass: '#10aa10', rumble: '#fff' } 
-                                                       : { road: '#3c3c3c', grass: '#008800', rumble: '#ff0000' }
+                    color: Math.floor(i / 3) % 2 === 0 ? { road: '#444', grass: '#15b01a', rumble: '#fff' } 
+                                                       : { road: '#3c3c3c', grass: '#0b6623', rumble: '#ff0000' }
                 });
             }
         }
         generateTrack();
         const trackLength = segments.length * segmentLength;
 
-        // Controles de teclado
+        // Rivales (Tráfico)
+        const cars = [
+            { pos: 1000, x: -0.5, speed: 80 },
+            { pos: 3000, x: 0.4, speed: 95 },
+            { pos: 6000, x: -0.2, speed: 110 },
+            { pos: 9000, x: 0.6, speed: 100 },
+            { pos: 12000, x: -0.6, speed: 120 }
+        ];
+
+        // Controles
         const keys = {};
-        window.addEventListener('keydown', e => keys[e.code] = true);
+        window.addEventListener('keydown', e => {
+            initAudio(); // Activa audio al presionar teclas
+            keys[e.code] = true;
+        });
         window.addEventListener('keyup', e => keys[e.code] = false);
+        canvas.addEventListener('click', () => initAudio());
 
         function update() {
-            // Acelerar / Frenar
+            // Controles de velocidad
             if (keys['ArrowUp'] || keys['KeyW']) {
                 speed = Math.min(speed + accel, maxSpeed);
             } else if (keys['ArrowDown'] || keys['KeyS']) {
@@ -84,105 +141,233 @@
                 speed = Math.max(speed - decel, 0);
             }
 
-            // Moverse en el mundo según la velocidad
             position += speed;
             if (position >= trackLength) position -= trackLength;
 
-            // Obtener el segmento actual en el que está el auto
             let currentSegmentIndex = Math.floor(position / segmentLength);
             let currentSegment = segments[currentSegmentIndex];
 
-            // Girar el auto e influencia de la fuerza centrífuga en las curvas
+            // Dirección
             if (speed > 0) {
                 if (keys['ArrowLeft'] || keys['KeyA']) playerX -= turnSpeed * (speed / maxSpeed);
                 if (keys['ArrowRight'] || keys['KeyD']) playerX += turnSpeed * (speed / maxSpeed);
-
-                // La curva empuja el auto hacia afuera
-                playerX -= (speed / maxSpeed) * currentSegment.curve * 0.015;
+                playerX -= (speed / maxSpeed) * currentSegment.curve * 0.012; // Fuerza centrífuga
             }
 
-            // Límites de la pista (Si se sale, frena drásticamente)
-            if (playerX < -1.5 || playerX > 1.5) {
-                if (speed > 50) speed -= 4;
+            // Offroad (Césped frena)
+            if (playerX < -1.0 || playerX > 1.0) {
+                if (speed > 60) speed -= 5;
+            }
+
+            // Actualizar Rivales y Colisiones
+            cars.forEach(car => {
+                car.pos += car.speed;
+                if (car.pos >= trackLength) car.pos -= trackLength;
+
+                // Verificar colisión si el rival está cerca del jugador
+                let distance = car.pos - position;
+                // Si el circuito da la vuelta completa
+                if (distance < -trackLength / 2) distance += trackLength;
+                
+                if (Math.abs(distance) < 150 && Math.abs(playerX - car.x) < 0.45) {
+                    playCrashSound();
+                    speed = 20; // Detener casi por completo
+                    car.pos += 200; // Empujar al bot un poco adelante
+                }
+            });
+
+            // Modificar el sonido del motor dinámicamente según las RPM ficticias
+            if (engineOsc && engineGain) {
+                if (speed > 0) {
+                    let rpmFactor = (speed / maxSpeed);
+                    engineOsc.frequency.setValueAtTime(35 + (rpmFactor * 120), audioCtx.currentTime);
+                    engineGain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+                } else {
+                    engineGain.gain.setValueAtTime(0.02, audioCtx.currentTime);
+                    engineOsc.frequency.setValueAtTime(30, audioCtx.currentTime);
+                }
             }
         }
 
         function draw() {
-            // 1. Dibujar el Cielo y el Horizonte
-            ctx.fillStyle = '#0055ff'; // Azul cielo
-            ctx.fillRect(0, 0, width, roadY);
-            
-            // Montañas lejanas simuladas
-            ctx.fillStyle = '#775533';
-            ctx.fillRect(0, roadY - 30, width, 30);
+            ctx.clearRect(0, 0, width, height);
 
-            // 2. Dibujar la Carretera (Efecto de Perspectiva Pseudo-3D)
+            // 1. Cielo e Fondo
+            ctx.fillStyle = '#002244';
+            ctx.fillRect(0, 0, width, roadY);
+            ctx.fillStyle = '#114488';
+            ctx.fillRect(0, roadY - 40, width, 40); // Montañas distantes estilo 8 bits
+
+            // 2. Dibujar Carretera CORREGIDA (De atrás hacia adelante para superposición correcta)
             let startSegmentIndex = Math.floor(position / segmentLength);
-            let dx = 0; // Acumulador de curvas
+            let dx = 0;
             let ddx = 0;
 
-            // Dibujamos desde el horizonte (lejos) hacia abajo (cerca)
-            for (let i = 80; i > 0; i--) {
+            let maxDrawY = height - 120; // Espacio libre abajo para el dashboard
+
+            for (let i = viewDepth; i > 0; i--) {
                 let segIndex = (startSegmentIndex + i) % segments.length;
                 let seg = segments[segIndex];
 
-                // Fórmulas de perspectiva hiperbólica simple
-                let perspective = i / 80;
-                let nextPerspective = (i - 1) / 80;
+                // Fórmulas de Proyección 3D Reales (Se ensancha hacia abajo)
+                let perspective = 1 / (i + 1); 
+                let nextPerspective = 1 / i;
 
-                let y1 = roadY + (1 - perspective) * roadY;
-                let h1 = roadY + (1 - nextPerspective) * roadY - y1;
+                let y1 = roadY + (1 - (i / viewDepth)) * (maxDrawY - roadY);
+                let y2 = roadY + (1 - ((i - 1) / viewDepth)) * (maxDrawY - roadY);
+                let h = y2 - y1;
 
-                // Aplicar curvatura acumulada
                 ddx += seg.curve;
                 dx += ddx;
 
-                let w1 = width * 0.6 * perspective; // Ancho de carretera lejano
-                let w2 = width * 0.6 * nextPerspective; // Ancho cercano
+                // El ancho escala proporcionalmente con la perspectiva inversa
+                let w1 = width * 18 * perspective;
+                let w2 = width * 18 * nextPerspective;
 
-                // Centros de la pista proyectados en pantalla
-                let cx1 = width / 2 + (dx * 0.3) * (1 - perspective);
-                let cx2 = width / 2 + ((dx + ddx) * 0.3) * (1 - nextPerspective);
+                let cx1 = width / 2 + (dx * 1.5) * perspective;
+                let cx2 = width / 2 + ((dx + ddx) * 1.5) * nextPerspective;
 
-                // Dibujar Pasto de los lados
+                // Pasto
                 ctx.fillStyle = seg.color.grass;
-                ctx.fillRect(0, y1, width, h1 + 1);
+                ctx.fillRect(0, y1, width, h + 1);
 
-                // Dibujar Bordes (Rumble strips rojo/blanco)
+                // Bordes de la pista (Rumble)
                 ctx.fillStyle = seg.color.rumble;
-                ctx.fillRect(cx1 - w1 * 1.1, y1, w1 * 2.2, h1 + 1);
+                ctx.beginPath();
+                ctx.moveTo(cx1 - w1 * 1.1, y1);
+                ctx.lineTo(cx2 - w2 * 1.1, y2);
+                ctx.lineTo(cx2 + w2 * 1.1, y2);
+                ctx.lineTo(cx1 + w1 * 1.1, y1);
+                ctx.fill();
 
-                // Dibujar la Pista (Asfalto gris)
+                // Asfalto
                 ctx.fillStyle = seg.color.road;
-                ctx.fillRect(cx1 - w1, y1, w1 * 2, h1 + 1);
+                ctx.beginPath();
+                ctx.moveTo(cx1 - w1, y1);
+                ctx.lineTo(cx2 - w2, y2);
+                ctx.lineTo(cx2 + w2, y2);
+                ctx.lineTo(cx1 + w1, y1);
+                ctx.fill();
             }
 
-            // 3. Dibujar el Auto del Jugador (Abajo en el centro/subjetivo)
-            let carScreenX = width / 2 + (playerX * width * 0.3) - 40;
-            let carScreenY = height - 100;
+            // 3. Dibujar Rivales (Si están en el rango de visión frontal)
+            cars.forEach(car => {
+                let carDistance = car.pos - position;
+                if (carDistance < 0 && carDistance > -trackLength / 2) carDistance += trackLength;
 
-            // Chasis del Auto (Estilo Deportivo Rojo)
-            ctx.fillStyle = '#ff0000'; // Cuerpo principal
-            ctx.fillRect(carScreenX, carScreenY, 80, 40);
+                if (carDistance > 0 && carDistance < 4000) {
+                    let i = Math.floor(carDistance / (trackLength / viewDepth / 4));
+                    if (i > 0 && i < viewDepth) {
+                        let perspective = 1 / (i + 1);
+                        let carY = roadY + (1 - (i / viewDepth)) * (maxDrawY - roadY);
+                        let carW = 800 * perspective;
+                        let carH = 400 * perspective;
+
+                        // Calcular curvatura aproximada en ese punto
+                        let startSegmentIndex = Math.floor(position / segmentLength);
+                        let dx = 0; let ddx = 0;
+                        for (let j = viewDepth; j > i; j--) {
+                            let seg = segments[(startSegmentIndex + j) % segments.length];
+                            ddx += seg.curve; dx += ddx;
+                        }
+                        let carX = width / 2 + (dx * 1.5) * perspective + (car.x * width * 18 * perspective) - carW / 2;
+
+                        if (carY < maxDrawY && carW > 4) {
+                            // Renderizar auto rival azul
+                            ctx.fillStyle = '#0055ff';
+                            ctx.fillRect(carX, carY - carH, carW, carH);
+                            ctx.fillStyle = '#000';
+                            ctx.fillRect(carX - 2, carY - carH + (carH*0.3), carW + 4, carH*0.4); // Neumáticos/Alerón
+                            ctx.fillStyle = '#ffcc00'; // Luces amarillas
+                            ctx.fillRect(carX + (carW*0.1), carY - (carH*0.4), carW*0.2, carH*0.2);
+                            ctx.fillRect(carX + (carW*0.7), carY - (carH*0.4), carW*0.2, carH*0.2);
+                        }
+                    }
+                }
+            });
+
+            // 4. Dibujar Auto del Jugador (Fijo abajo)
+            let playerScale = 1.2;
+            let carScreenX = width / 2 + (playerX * width * 0.35) - 45;
+            let carScreenY = maxDrawY - 10;
+
+            ctx.fillStyle = '#ff1111'; // Chasis Rojo Top Gear
+            ctx.fillRect(carScreenX, carScreenY, 90, 35);
+            ctx.fillStyle = '#000'; // Llantas y alerón trasero largo
+            ctx.fillRect(carScreenX - 6, carScreenY + 8, 6, 22);
+            ctx.fillRect(carScreenX + 90, carScreenY + 8, 6, 22);
+            ctx.fillRect(carScreenX - 10, carScreenY, 110, 8);
+            ctx.fillStyle = '#aaffff'; // Parabrisas
+            ctx.fillRect(carScreenX + 15, carScreenY + 12, 60, 8);
+
+            // Luces de freno rojas
+            ctx.fillStyle = (keys['ArrowDown'] || keys['KeyS']) ? '#ff6666' : '#770000';
+            ctx.fillRect(carScreenX + 8, carScreenY + 24, 16, 6);
+            ctx.fillRect(carScreenX + 66, carScreenY + 24, 16, 6);
+
+            // 5. DASHBOARD RETRO (PANEL DE INSTRUMENTOS)
+            ctx.fillStyle = '#1e1e24';
+            ctx.fillRect(0, maxDrawY, width, height - maxDrawY);
             
-            ctx.fillStyle = '#000000'; // Alerón y ruedas
-            ctx.fillRect(carScreenX - 5, carScreenY + 10, 5, 25); // Rueda izq
-            ctx.fillRect(carScreenX + 80, carScreenY + 10, 5, 25); // Rueda der
-            ctx.fillRect(carScreenX - 5, carScreenY, 90, 8); // Alerón trasero
+            // Borde superior cromado del panel
+            ctx.fillStyle = '#555';
+            ctx.fillRect(0, maxDrawY, width, 4);
 
-            ctx.fillStyle = '#55ffff'; // Parabrisas trasero
-            ctx.fillRect(carScreenX + 15, carScreenY + 15, 50, 10);
+            // Marcador Digital de Distancia
+            ctx.fillStyle = '#000';
+            ctx.fillRect(40, maxDrawY + 25, 160, 50);
+            ctx.strokeStyle = '#333';
+            ctx.strokeRect(40, maxDrawY + 25, 160, 50);
+            ctx.fillStyle = '#00ff00';
+            ctx.font = '16px "Courier New"';
+            ctx.fillText(`MTS: ${Math.floor(position / 10)}`, 50, maxDrawY + 55);
 
-            // Luces traseras de freno (se encienden al frenar)
-            ctx.fillStyle = (keys['ArrowDown'] || keys['KeyS']) ? '#ff5555' : '#aa0000';
-            ctx.fillRect(carScreenX + 5, carScreenY + 28, 15, 6);
-            ctx.fillRect(carScreenX + 60, carScreenY + 28, 15, 6);
+            // VELOCÍMETRO DE AGUJA CIRCULAR GIGANTE
+            let dialX = width - 130;
+            let dialY = maxDrawY + 55;
+            let dialRadius = 45;
 
-            // 4. Interfaz de Usuario (HUD)
+            // Fondo del Tacómetro
+            ctx.fillStyle = '#111';
+            ctx.beginPath();
+            ctx.arc(dialX, dialY, dialRadius, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = '#fff';
+            ctx.stroke();
+
+            // Líneas de escala (Ticks del velocímetro)
             ctx.fillStyle = '#fff';
-            ctx.font = '20px "Courier New"';
-            ctx.fillText(`VELOCIDAD: ${Math.floor(speed)} KM/H`, 20, 40);
-            ctx.fillText(`DISTANCIA: ${Math.floor(position / 10)} M`, 20, 70);
+            ctx.font = '10px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('0', dialX - 30, dialY + 15);
+            ctx.fillText('120', dialX, dialY - 32);
+            ctx.fillText('240', dialX + 28, dialY + 15);
+
+            // Calcular ángulo de la aguja (Mapeo de velocidad de 0 a 240)
+            // Ángulo inicial: 0.75 * PI (abajo izquierda), Ángulo final: 2.25 * PI (abajo derecha)
+            let startAngle = Math.PI * 0.75;
+            let endAngle = Math.PI * 2.25;
+            let currentAngle = startAngle + (speed / maxSpeed) * (endAngle - startAngle);
+
+            // Dibujar Aguja Roja
+            ctx.strokeStyle = '#ff0000';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(dialX, dialY);
+            ctx.lineTo(dialX + Math.cos(currentAngle) * (dialRadius - 8), dialY + Math.sin(currentAngle) * (dialRadius - 8));
+            ctx.stroke();
+
+            // Centro del Dial
+            ctx.fillStyle = '#fff';
+            ctx.beginPath();
+            ctx.arc(dialX, dialY, 5, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Texto Digital de KM/H abajo del centro
+            ctx.fillStyle = '#ffff00';
+            ctx.font = 'bold 12px Arial';
+            ctx.fillText(`${Math.floor(speed)} KM/H`, dialX, dialY + 28);
         }
 
         function gameLoop() {
