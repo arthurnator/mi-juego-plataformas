@@ -3,371 +3,278 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Retro Racing v2 - Estilo Top Gear</title>
+    <title>Super Mario Style - Plataformas</title>
     <style>
         body {
             margin: 0;
             padding: 0;
-            background-color: #0d0d0d;
+            background-color: #000;
             display: flex;
-            flex-direction: column;
             justify-content: center;
             align-items: center;
             height: 100vh;
-            font-family: 'Courier New', Courier, monospace;
-            color: #fff;
+            font-family: Arial, sans-serif;
         }
         canvas {
-            border: 6px solid #333;
-            box-shadow: 0 0 30px rgba(255, 0, 0, 0.3);
-            background-color: #000;
-        }
-        .instructions {
-            margin-top: 10px;
-            color: #888;
-            font-size: 14px;
-            text-align: center;
+            border: 4px solid #fff;
+            box-shadow: 0 0 20px rgba(255, 255, 255, 0.3);
+            background-color: #5c94fc; /* Azul cielo clásico de Mario */
         }
     </style>
 </head>
 <body>
 
-    <canvas id="gameCanvas" width="640" height="480"></canvas>
-    <div class="instructions">Usa las Flechas o WASD para conducir. ¡Haz clic en la pantalla para activar el sonido del motor!</div>
+    <canvas id="gameCanvas" width="800" height="448"></canvas>
 
     <script>
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
 
-        const width = canvas.width;
-        const height = canvas.height;
-        const roadY = 200; // Horizonte corregido
-        const viewDepth = 80;
+        // Configuración del mundo
+        const gravity = 0.6;
+        const friction = 0.85;
 
-        // Física y Jugador
-        let position = 0;
-        let playerX = 0;
-        let speed = 0;
-        const maxSpeed = 240;
-        const accel = 1.5;
-        const decel = 1.0;
-        const breaking = 6;
-        const turnSpeed = 0.04;
+        // Jugador (Mario)
+        const player = {
+            x: 100,
+            y: 300,
+            width: 32,
+            height: 48,
+            velX: 0,
+            velY: 0,
+            speed: 5,
+            jumpForce: 12,
+            grounded: false,
+            coins: 0
+        };
 
-        // Audio Context para efectos retro
-        let audioCtx = null;
-        let engineOsc = null;
-        let engineGain = null;
+        // Cámara para el Scroll Horizontal
+        const camera = {
+            x: 0,
+            width: canvas.width
+        };
 
-        function initAudio() {
-            if (audioCtx) return;
-            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            
-            // Configurar oscilador para el motor
-            engineOsc = audioCtx.createOscillator();
-            engineGain = audioCtx.createGain();
-            
-            engineOsc.type = 'sawtooth'; 
-            engineOsc.frequency.setValueAtTime(30, audioCtx.currentTime);
-            engineGain.gain.setValueAtTime(0.0, audioCtx.currentTime); // Apagado al inicio
-            
-            engineOsc.connect(engineGain);
-            engineGain.connect(audioCtx.destination);
-            engineOsc.start();
-        }
-
-        function playCrashSound() {
-            if (!audioCtx) return;
-            const osc = audioCtx.createOscillator();
-            const gain = audioCtx.createGain();
-            osc.type = 'triangle';
-            osc.frequency.setValueAtTime(120, audioCtx.currentTime);
-            osc.frequency.exponentialRampToValueAtTime(40, audioCtx.currentTime + 0.3);
-            gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
-            gain.gain.linearRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
-            osc.connect(gain);
-            gain.connect(audioCtx.destination);
-            osc.start();
-            osc.stop(audioCtx.currentTime + 0.3);
-        }
-
-        // Estructura de la Pista
-        const segments = [];
-        const segmentLength = 200;
-        
-        function generateTrack() {
-            for (let i = 0; i < 600; i++) {
-                let curve = 0;
-                if (i > 60 && i < 110) curve = 1.5;    // Curva derecha
-                if (i > 180 && i < 240) curve = -1.8;  // Curva izquierda cerrada
-                if (i > 350 && i < 450) curve = 2.2;   // Curva S a la derecha
-
-                segments.push({
-                    index: i,
-                    curve: curve,
-                    color: Math.floor(i / 3) % 2 === 0 ? { road: '#444', grass: '#15b01a', rumble: '#fff' } 
-                                                       : { road: '#3c3c3c', grass: '#0b6623', rumble: '#ff0000' }
-                });
-            }
-        }
-        generateTrack();
-        const trackLength = segments.length * segmentLength;
-
-        // Rivales (Tráfico)
-        const cars = [
-            { pos: 1000, x: -0.5, speed: 80 },
-            { pos: 3000, x: 0.4, speed: 95 },
-            { pos: 6000, x: -0.2, speed: 110 },
-            { pos: 9000, x: 0.6, speed: 100 },
-            { pos: 12000, x: -0.6, speed: 120 }
+        // Tipos de bloques: 1 = Suelo, 2 = Bloque de ladrillo, 3 = Bloque sorpresa, 4 = Moneda
+        const mapTiles = [
+            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
         ];
 
-        // Controles
-        const keys = {};
-        window.addEventListener('keydown', e => {
-            initAudio(); // Activa audio al presionar teclas
-            keys[e.code] = true;
+        // Lista de objetos rígidos (plataformas y bloques)
+        const platforms = [];
+        const coins = [];
+
+        // Generar el nivel mapeado dinámicamente
+        // Suelo base abajo
+        for (let i = 0; i < 60; i++) {
+            // Dejar un hueco/vacío en los bloques 15, 16 y 17 para poder caerse
+            if (i !== 15 && i !== 16 && i !== 17) {
+                platforms.push({ x: i * 32, y: canvas.height - 64, width: 32, height: 64, type: 'ground' });
+            }
+        }
+
+        // Bloques flotantes estilo Mario (Ladrillos y Sorpresas)
+        const blockStructure = [
+            { x: 250, y: 260, type: 'brick' },
+            { x: 282, y: 260, type: 'box' },
+            { x: 314, y: 260, type: 'brick' },
+            { x: 346, y: 260, type: 'box' },
+            { x: 378, y: 260, type: 'brick' },
+            
+            // Una pirámide de bloques más adelante
+            { x: 600, y: 320, type: 'brick' },
+            { x: 632, y: 320, type: 'brick' },
+            { x: 632, y: 288, type: 'brick' },
+            { x: 664, y: 320, type: 'brick' },
+            { x: 664, y: 288, type: 'brick' },
+            { x: 664, y: 256, type: 'box' },
+        ];
+
+        blockStructure.forEach(b => {
+            platforms.push({ x: b.x, y: b.y, width: 32, height: 32, type: b.type });
         });
+
+        // Monedas flotantes coleccionables
+        const coinPositions = [
+            { x: 290, y: 220 }, { x: 354, y: 220 },
+            { x: 450, y: 280 }, { x: 490, y: 280 }, { x: 530, y: 280 }
+        ];
+        
+        coinPositions.forEach(c => {
+            coins.push({ x: c.x, y: c.y, width: 16, height: 20, collected: false });
+        });
+
+        // Teclado
+        const keys = [];
+        window.addEventListener('keydown', e => keys[e.code] = true);
         window.addEventListener('keyup', e => keys[e.code] = false);
-        canvas.addEventListener('click', () => initAudio());
+
+        // Sistema de colisiones por los 4 lados (Algoritmo AABB avanzado)
+        function colCheck(shapeA, shapeB) {
+            let vX = (shapeA.x + (shapeA.width / 2)) - (shapeB.x + (shapeB.width / 2)),
+                vY = (shapeA.y + (shapeA.height / 2)) - (shapeB.y + (shapeB.height / 2)),
+                hWidths = (shapeA.width / 2) + (shapeB.width / 2),
+                hHeights = (shapeA.height / 2) + (shapeB.height / 2),
+                colDir = null;
+
+            if (Math.abs(vX) < hWidths && Math.abs(vY) < hHeights) {
+                let oX = hWidths - Math.abs(vX),
+                    oY = hHeights - Math.abs(vY);
+                if (oX >= oY) {
+                    if (vY > 0) {
+                        colDir = "t"; // Choque arriba (cabeza)
+                        shapeA.y += oY;
+                    } else {
+                        colDir = "b"; // Choque abajo (pies)
+                        shapeA.y -= oY;
+                    }
+                } else {
+                    if (vX > 0) {
+                        colDir = "l"; // Choque izquierda
+                        shapeA.x += oX;
+                    } else {
+                        colDir = "r"; // Choque derecha
+                        shapeA.x -= oX;
+                    }
+                }
+            }
+            return colDir;
+        }
 
         function update() {
-            // Controles de velocidad
-            if (keys['ArrowUp'] || keys['KeyW']) {
-                speed = Math.min(speed + accel, maxSpeed);
-            } else if (keys['ArrowDown'] || keys['KeyS']) {
-                speed = Math.max(speed - breaking, 0);
-            } else {
-                speed = Math.max(speed - decel, 0);
+            // Controles de movimiento
+            if (keys['ArrowRight'] || keys['KeyD']) {
+                if (player.velX < player.speed) player.velX++;
+            }
+            if (keys['ArrowLeft'] || keys['KeyA']) {
+                if (player.velX > -player.speed) player.velX--;
+            }
+            if (keys['ArrowUp'] || keys['Space'] || keys['KeyW']) {
+                if (player.grounded) {
+                    player.velY = -player.jumpForce;
+                    player.grounded = false;
+                }
             }
 
-            position += speed;
-            if (position >= trackLength) position -= trackLength;
+            // Aplicar físicas estables
+            player.velX *= friction;
+            player.velY += gravity;
 
-            let currentSegmentIndex = Math.floor(position / segmentLength);
-            let currentSegment = segments[currentSegmentIndex];
+            player.grounded = false;
 
-            // Dirección
-            if (speed > 0) {
-                if (keys['ArrowLeft'] || keys['KeyA']) playerX -= turnSpeed * (speed / maxSpeed);
-                if (keys['ArrowRight'] || keys['KeyD']) playerX += turnSpeed * (speed / maxSpeed);
-                playerX -= (speed / maxSpeed) * currentSegment.curve * 0.012; // Fuerza centrífuga
-            }
+            // Evaluar colisiones con plataformas rígidas
+            platforms.forEach(platform => {
+                let dir = colCheck(player, platform);
 
-            // Offroad (Césped frena)
-            if (playerX < -1.0 || playerX > 1.0) {
-                if (speed > 60) speed -= 5;
-            }
-
-            // Actualizar Rivales y Colisiones
-            cars.forEach(car => {
-                car.pos += car.speed;
-                if (car.pos >= trackLength) car.pos -= trackLength;
-
-                // Verificar colisión si el rival está cerca del jugador
-                let distance = car.pos - position;
-                // Si el circuito da la vuelta completa
-                if (distance < -trackLength / 2) distance += trackLength;
-                
-                if (Math.abs(distance) < 150 && Math.abs(playerX - car.x) < 0.45) {
-                    playCrashSound();
-                    speed = 20; // Detener casi por completo
-                    car.pos += 200; // Empujar al bot un poco adelante
+                if (dir === "l" || dir === "r") {
+                    player.velX = 0;
+                } else if (dir === "b") {
+                    player.grounded = true;
+                    player.velY = 0;
+                } else if (dir === "t") {
+                    player.velY = 1; // Rebota hacia abajo si pega con la cabeza
                 }
             });
 
-            // Modificar el sonido del motor dinámicamente según las RPM ficticias
-            if (engineOsc && engineGain) {
-                if (speed > 0) {
-                    let rpmFactor = (speed / maxSpeed);
-                    engineOsc.frequency.setValueAtTime(35 + (rpmFactor * 120), audioCtx.currentTime);
-                    engineGain.gain.setValueAtTime(0.15, audioCtx.currentTime);
-                } else {
-                    engineGain.gain.setValueAtTime(0.02, audioCtx.currentTime);
-                    engineOsc.frequency.setValueAtTime(30, audioCtx.currentTime);
+            // Recolección de monedas
+            coins.forEach(coin => {
+                if (!coin.collected && 
+                    player.x < coin.x + coin.width &&
+                    player.x + player.width > coin.x &&
+                    player.y < coin.y + coin.height &&
+                    player.y + player.height > coin.y) {
+                        coin.collected = true;
+                        player.coins++;
                 }
+            });
+
+            // Aplicar el movimiento final
+            player.x += player.velX;
+            player.y += player.velY;
+
+            // Restricción para no salirse por la izquierda del mapa
+            if (player.x < 0) player.x = 0;
+
+            // Control de la Cámara (Sigue a Mario dinámicamente si pasa de la mitad de pantalla)
+            if (player.x > canvas.width / 2) {
+                camera.x = player.x - canvas.width / 2;
+            } else {
+                camera.x = 0;
+            }
+
+            // Caída al vacío (Reiniciar posición si cae fuera del mapa)
+            if (player.y > canvas.height) {
+                player.x = 100;
+                player.y = 300;
+                player.velX = 0;
+                player.velY = 0;
             }
         }
 
         function draw() {
-            ctx.clearRect(0, 0, width, height);
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            // 1. Cielo e Fondo
-            ctx.fillStyle = '#002244';
-            ctx.fillRect(0, 0, width, roadY);
-            ctx.fillStyle = '#114488';
-            ctx.fillRect(0, roadY - 40, width, 40); // Montañas distantes estilo 8 bits
+            // Guardar contexto para aplicar la translación de la cámara horizontal
+            ctx.save();
+            ctx.translate(-camera.x, 0);
 
-            // 2. Dibujar Carretera CORREGIDA (De atrás hacia adelante para superposición correcta)
-            let startSegmentIndex = Math.floor(position / segmentLength);
-            let dx = 0;
-            let ddx = 0;
-
-            let maxDrawY = height - 120; // Espacio libre abajo para el dashboard
-
-            for (let i = viewDepth; i > 0; i--) {
-                let segIndex = (startSegmentIndex + i) % segments.length;
-                let seg = segments[segIndex];
-
-                // Fórmulas de Proyección 3D Reales (Se ensancha hacia abajo)
-                let perspective = 1 / (i + 1); 
-                let nextPerspective = 1 / i;
-
-                let y1 = roadY + (1 - (i / viewDepth)) * (maxDrawY - roadY);
-                let y2 = roadY + (1 - ((i - 1) / viewDepth)) * (maxDrawY - roadY);
-                let h = y2 - y1;
-
-                ddx += seg.curve;
-                dx += ddx;
-
-                // El ancho escala proporcionalmente con la perspectiva inversa
-                let w1 = width * 18 * perspective;
-                let w2 = width * 18 * nextPerspective;
-
-                let cx1 = width / 2 + (dx * 1.5) * perspective;
-                let cx2 = width / 2 + ((dx + ddx) * 1.5) * nextPerspective;
-
-                // Pasto
-                ctx.fillStyle = seg.color.grass;
-                ctx.fillRect(0, y1, width, h + 1);
-
-                // Bordes de la pista (Rumble)
-                ctx.fillStyle = seg.color.rumble;
-                ctx.beginPath();
-                ctx.moveTo(cx1 - w1 * 1.1, y1);
-                ctx.lineTo(cx2 - w2 * 1.1, y2);
-                ctx.lineTo(cx2 + w2 * 1.1, y2);
-                ctx.lineTo(cx1 + w1 * 1.1, y1);
-                ctx.fill();
-
-                // Asfalto
-                ctx.fillStyle = seg.color.road;
-                ctx.beginPath();
-                ctx.moveTo(cx1 - w1, y1);
-                ctx.lineTo(cx2 - w2, y2);
-                ctx.lineTo(cx2 + w2, y2);
-                ctx.lineTo(cx1 + w1, y1);
-                ctx.fill();
-            }
-
-            // 3. Dibujar Rivales (Si están en el rango de visión frontal)
-            cars.forEach(car => {
-                let carDistance = car.pos - position;
-                if (carDistance < 0 && carDistance > -trackLength / 2) carDistance += trackLength;
-
-                if (carDistance > 0 && carDistance < 4000) {
-                    let i = Math.floor(carDistance / (trackLength / viewDepth / 4));
-                    if (i > 0 && i < viewDepth) {
-                        let perspective = 1 / (i + 1);
-                        let carY = roadY + (1 - (i / viewDepth)) * (maxDrawY - roadY);
-                        let carW = 800 * perspective;
-                        let carH = 400 * perspective;
-
-                        // Calcular curvatura aproximada en ese punto
-                        let startSegmentIndex = Math.floor(position / segmentLength);
-                        let dx = 0; let ddx = 0;
-                        for (let j = viewDepth; j > i; j--) {
-                            let seg = segments[(startSegmentIndex + j) % segments.length];
-                            ddx += seg.curve; dx += ddx;
-                        }
-                        let carX = width / 2 + (dx * 1.5) * perspective + (car.x * width * 18 * perspective) - carW / 2;
-
-                        if (carY < maxDrawY && carW > 4) {
-                            // Renderizar auto rival azul
-                            ctx.fillStyle = '#0055ff';
-                            ctx.fillRect(carX, carY - carH, carW, carH);
-                            ctx.fillStyle = '#000';
-                            ctx.fillRect(carX - 2, carY - carH + (carH*0.3), carW + 4, carH*0.4); // Neumáticos/Alerón
-                            ctx.fillStyle = '#ffcc00'; // Luces amarillas
-                            ctx.fillRect(carX + (carW*0.1), carY - (carH*0.4), carW*0.2, carH*0.2);
-                            ctx.fillRect(carX + (carW*0.7), carY - (carH*0.4), carW*0.2, carH*0.2);
-                        }
-                    }
+            // 1. Dibujar Plataformas / Bloques con estética pixelada simulada
+            platforms.forEach(p => {
+                if (p.type === 'ground') {
+                    // Suelo Tierra/Pasto
+                    ctx.fillStyle = '#d88444'; // Tierra
+                    ctx.fillRect(p.x, p.y, p.width, p.height);
+                    ctx.fillStyle = '#4cb050'; // Capa verde arriba
+                    ctx.fillRect(p.x, p.y, p.width, 10);
+                } else if (p.type === 'brick') {
+                    // Bloque de ladrillos marrón oscuro
+                    ctx.fillStyle = '#b84418';
+                    ctx.fillRect(p.x, p.y, p.width, p.height);
+                    ctx.strokeStyle = '#fc9c7c';
+                    ctx.strokeRect(p.x, p.y, p.width, p.height);
+                } else if (p.type === 'box') {
+                    // Bloque sorpresa de signo de interrogación "?"
+                    ctx.fillStyle = '#fc9c7c';
+                    ctx.fillRect(p.x, p.y, p.width, p.height);
+                    ctx.fillStyle = '#000';
+                    ctx.font = 'bold 18px Arial';
+                    ctx.fillText('?', p.x + 11, p.y + 23);
+                    ctx.strokeStyle = '#fff';
+                    ctx.strokeRect(p.x, p.y, p.width, p.height);
                 }
             });
 
-            // 4. Dibujar Auto del Jugador (Fijo abajo)
-            let playerScale = 1.2;
-            let carScreenX = width / 2 + (playerX * width * 0.35) - 45;
-            let carScreenY = maxDrawY - 10;
+            // 2. Dibujar Monedas Animadas/Brillantes
+            coins.forEach(c => {
+                if (!c.collected) {
+                    ctx.fillStyle = '#fcc018'; // Oro
+                    ctx.beginPath();
+                    ctx.ellipse(c.x + 8, c.y + 10, 6, 10, 0, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.strokeStyle = '#fff';
+                    ctx.stroke();
+                }
+            });
 
-            ctx.fillStyle = '#ff1111'; // Chasis Rojo Top Gear
-            ctx.fillRect(carScreenX, carScreenY, 90, 35);
-            ctx.fillStyle = '#000'; // Llantas y alerón trasero largo
-            ctx.fillRect(carScreenX - 6, carScreenY + 8, 6, 22);
-            ctx.fillRect(carScreenX + 90, carScreenY + 8, 6, 22);
-            ctx.fillRect(carScreenX - 10, carScreenY, 110, 8);
-            ctx.fillStyle = '#aaffff'; // Parabrisas
-            ctx.fillRect(carScreenX + 15, carScreenY + 12, 60, 8);
+            // 3. Dibujar Personaje Principal (Cuadrante Rojo de Overol Azul)
+            ctx.fillStyle = '#0020f8'; // Pantalones/Overol Azul
+            ctx.fillRect(player.x + 4, player.y + 24, player.width - 8, 24);
+            ctx.fillStyle = '#f83800'; // Camisa y gorra Roja
+            ctx.fillRect(player.x + 2, player.y + 8, player.width - 4, 16);
+            ctx.fillStyle = '#f8b888'; // Piel / Cara
+            ctx.fillRect(player.x + 6, player.y, player.width - 12, 12);
+            ctx.fillStyle = '#f83800'; // Gorra
+            ctx.fillRect(player.x + 4, player.y, player.width - 8, 4);
 
-            // Luces de freno rojas
-            ctx.fillStyle = (keys['ArrowDown'] || keys['KeyS']) ? '#ff6666' : '#770000';
-            ctx.fillRect(carScreenX + 8, carScreenY + 24, 16, 6);
-            ctx.fillRect(carScreenX + 66, carScreenY + 24, 16, 6);
+            ctx.restore(); // Restaurar cámara para dibujar interfaz fija
 
-            // 5. DASHBOARD RETRO (PANEL DE INSTRUMENTOS)
-            ctx.fillStyle = '#1e1e24';
-            ctx.fillRect(0, maxDrawY, width, height - maxDrawY);
-            
-            // Borde superior cromado del panel
-            ctx.fillStyle = '#555';
-            ctx.fillRect(0, maxDrawY, width, 4);
-
-            // Marcador Digital de Distancia
-            ctx.fillStyle = '#000';
-            ctx.fillRect(40, maxDrawY + 25, 160, 50);
-            ctx.strokeStyle = '#333';
-            ctx.strokeRect(40, maxDrawY + 25, 160, 50);
-            ctx.fillStyle = '#00ff00';
-            ctx.font = '16px "Courier New"';
-            ctx.fillText(`MTS: ${Math.floor(position / 10)}`, 50, maxDrawY + 55);
-
-            // VELOCÍMETRO DE AGUJA CIRCULAR GIGANTE
-            let dialX = width - 130;
-            let dialY = maxDrawY + 55;
-            let dialRadius = 45;
-
-            // Fondo del Tacómetro
-            ctx.fillStyle = '#111';
-            ctx.beginPath();
-            ctx.arc(dialX, dialY, dialRadius, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.lineWidth = 3;
-            ctx.strokeStyle = '#fff';
-            ctx.stroke();
-
-            // Líneas de escala (Ticks del velocímetro)
+            // 4. Interfaz fija (HUD) - Contador de Monedas arriba a la izquierda
             ctx.fillStyle = '#fff';
-            ctx.font = '10px Arial';
-            ctx.textAlign = 'center';
-            ctx.fillText('0', dialX - 30, dialY + 15);
-            ctx.fillText('120', dialX, dialY - 32);
-            ctx.fillText('240', dialX + 28, dialY + 15);
-
-            // Calcular ángulo de la aguja (Mapeo de velocidad de 0 a 240)
-            // Ángulo inicial: 0.75 * PI (abajo izquierda), Ángulo final: 2.25 * PI (abajo derecha)
-            let startAngle = Math.PI * 0.75;
-            let endAngle = Math.PI * 2.25;
-            let currentAngle = startAngle + (speed / maxSpeed) * (endAngle - startAngle);
-
-            // Dibujar Aguja Roja
-            ctx.strokeStyle = '#ff0000';
-            ctx.lineWidth = 3;
-            ctx.beginPath();
-            ctx.moveTo(dialX, dialY);
-            ctx.lineTo(dialX + Math.cos(currentAngle) * (dialRadius - 8), dialY + Math.sin(currentAngle) * (dialRadius - 8));
-            ctx.stroke();
-
-            // Centro del Dial
-            ctx.fillStyle = '#fff';
-            ctx.beginPath();
-            ctx.arc(dialX, dialY, 5, 0, Math.PI * 2);
-            ctx.fill();
-
-            // Texto Digital de KM/H abajo del centro
-            ctx.fillStyle = '#ffff00';
-            ctx.font = 'bold 12px Arial';
-            ctx.fillText(`${Math.floor(speed)} KM/H`, dialX, dialY + 28);
+            ctx.font = 'bold 20px "Courier New"';
+            ctx.shadowColor = 'black';
+            ctx.shadowBlur = 4;
+            ctx.fillText(`MARIO   MONEDAS: ${player.coins.toString().padStart(2, '0')}`, 30, 40);
+            ctx.shadowBlur = 0; // reset
         }
 
         function gameLoop() {
